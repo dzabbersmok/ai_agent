@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 from config import SYSTEM_PROMPT
-from call_functions import available_functions
+from call_functions import available_functions, call_function
 
 def main():
     load_dotenv()
@@ -32,7 +32,14 @@ def main():
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
 
-    generate_content(client, messages, verbose_flag)
+    loop_counter = 0
+    done = False
+
+    while not done and loop_counter < 20:
+        done = generate_content(client, messages, verbose_flag)
+        loop_counter += 1
+
+    # generate_content(client, messages, verbose_flag)
 
 def generate_content(client, messages, verbose_flag):
     response = client.models.generate_content(
@@ -44,12 +51,25 @@ def generate_content(client, messages, verbose_flag):
         print("Prompt tokens:", response.usage_metadata.prompt_token_count)
         print("Response tokens:", response.usage_metadata.candidates_token_count)
         
-    print("Response:")
+    # print("Response:")
     if response.function_calls is not None and len(response.function_calls) > 0:
         for function_call in response.function_calls:
-            print(f"Calling function: {function_call.name}({function_call.args})")
+            # print(f"Calling function: {function_call.name}({function_call.args})")
+            function_call_result = call_function(function_call, verbose_flag)
+            if "result" not in function_call_result.parts[0].function_response.response:
+                raise Exception("SOMETHING FATAL HAPPENED")
+            
+            if verbose_flag:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
+            
+            for candidate in response.candidates:
+                messages.append(candidate.content)
+
+            messages.append(function_call_result)
+
     else:
         print(response.text)
+        return True
 
 if __name__ == "__main__":
     main()
